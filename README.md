@@ -1,2 +1,4 @@
 # Fake News
- fake news detection
+ Fake News detection
+
+1. Baseline - XGB regression model
