@@ -1,5 +1,5 @@
 
 *.tsv
 task.md
-dataset/test_preprocessed.csv
-dataset/train_preprocessed.csv
+*.pyc
+*.stats

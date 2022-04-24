@@ -33,7 +33,7 @@ def preprocess_text(text):
     return text
 
 
-#%% Data load
+#%% Load data
 
 train_data_path = 'dataset/train.tsv'
 test_data_path = 'dataset/test.tsv'
@@ -76,11 +76,3 @@ def preprocess_data(train, test, save=True):
 train, test = preprocess_data(train_df, test_df, save=True)
 
 
-"""
-Possible additional options:
-# add Named-entity recognition (https://deeppavlov.ai/)
-
-# Another tools
-# import pymorphy2
-# from nltk.tokenize import word_tokenize
-"""
