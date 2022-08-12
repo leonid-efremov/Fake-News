@@ -6,9 +6,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from transformers import AdamW, get_linear_schedule_with_warmup
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 #%% Convert to torch DataLoader
@@ -59,14 +56,15 @@ def to_torch(X, y, shuffle=False, batch_size=64, to_bert=False, tokenizer=None):
 #%% Training and evaluating model
 class BertClassifier:
 
-    def __init__(self, bert, n_classes=2):
+    def __init__(self, bert, n_classes=2, device='cuda' if torch.cuda.is_available() else 'cpu'):
         """Initialize neural network and setup layers"""
 
         self.model = bert
         self.out_features = self.model.bert.encoder.layer[1].output.dense.out_features
         self.model.classifier = nn.Sequential(nn.Dropout(0.1),
                                               nn.Linear(self.out_features, n_classes))
-        self.model.to(device)
+        self.device = device
+        self.model.to(self.device)
 
     def train(self, train, valid, lr=1e-5, n_epochs=5, print_every=1):
         """
@@ -78,10 +76,10 @@ class BertClassifier:
         Save model if needed.
         """
 
-        criterion = nn.CrossEntropyLoss().to(device)
+        criterion = nn.CrossEntropyLoss().to(self.device)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
-        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0,
-                                                    num_training_steps=len(train)*n_epochs)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=5, 
+                                                               verbose=True, factor=0.5)
 
         n_epochs = n_epochs
         self.loss_list = []
@@ -97,9 +95,9 @@ class BertClassifier:
     
             for data in train:
 
-                input_ids = data["input_ids"].to(device)
-                attention_mask = data["attention_mask"].to(device)
-                labels = data["targets"].to(device)
+                input_ids = data["input_ids"].to(self.device)
+                attention_mask = data["attention_mask"].to(self.device)
+                labels = data["targets"].to(self.device)
 
                 output = self.model(input_ids, attention_mask)
                 loss = criterion(output.logits, labels)
@@ -110,8 +108,7 @@ class BertClassifier:
 
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-                optimizer.step()                
-                scheduler.step()
+                optimizer.step()
                 optimizer.zero_grad()
 
             train_acc = correct_predictions.double() / (len(train)*train.batch_size)
@@ -124,9 +121,9 @@ class BertClassifier:
 
             for data in valid:                
                 # inputs, labels = inputs.to(device), labels.to(device)
-                input_ids = data["input_ids"].to(device)
-                attention_mask = data["attention_mask"].to(device)
-                labels = data["targets"].to(device)
+                input_ids = data["input_ids"].to(self.device)
+                attention_mask = data["attention_mask"].to(self.device)
+                labels = data["targets"].to(self.device)
 
                 output = self.model(input_ids, attention_mask)
                 loss = criterion(output.logits, labels)
@@ -136,7 +133,8 @@ class BertClassifier:
                 correct_predictions += torch.sum(preds == labels)
         
             val_acc = correct_predictions.double() / (len(valid)*valid.batch_size)
-            val_loss = np.mean(val_losses)    
+            val_loss = np.mean(val_losses)
+            scheduler.step(val_loss) 
         
             self.loss_list.append(val_loss)
 
@@ -149,10 +147,11 @@ class BertClassifier:
                 self.best_epoch = epoch
                 torch.save(self.model.state_dict(), 'model.torch')
                 best_accuracy = val_acc
-
+        
         self.model.load_state_dict(torch.load('model.torch'))
 
-    def predict(self, test):
+
+    def predict(self, test, from_pretrained=True):
         """
         Data types:
         test - torch.DataLoader
@@ -161,13 +160,15 @@ class BertClassifier:
         """  
         batch_size = test.batch_size  
 
+        if from_pretrained:
+            self.model.load_state_dict(torch.load('model.torch'))
         self.model.eval()
 
         y_pred = torch.zeros(batch_size*len(test))
 
         for i, data in enumerate(test):
-            input_ids = data["input_ids"].to(device)
-            attention_mask = data["attention_mask"].to(device)
+            input_ids = data["input_ids"].to(self.device)
+            attention_mask = data["attention_mask"].to(self.device)
 
             output = self.model(input_ids, attention_mask)
 

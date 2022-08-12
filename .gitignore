@@ -3,3 +3,4 @@
 task.md
 *.pyc
 *.stats
+*.torch
