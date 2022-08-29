@@ -4,3 +4,4 @@ task.md
 *.pyc
 *.stats
 *.torch
+dataset/
